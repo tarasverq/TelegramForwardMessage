@@ -1,33 +1,36 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <ProjectGuid>{400D2544-1CC6-4D8A-A62C-2292D9947A16}</ProjectGuid>
-    <TargetFramework>netstandard2.0</TargetFramework>
-    <AssemblyTitle>TLSharp.Core</AssemblyTitle>
-    <Product>TLSharp.Core</Product>
-    <Description>Unofficial Telegram (http://telegram.org) client library implemented in C#. Latest TL scheme supported.
+<!--  <PropertyGroup>-->
+<!--    <ProjectGuid>{400D2544-1CC6-4D8A-A62C-2292D9947A16}</ProjectGuid>-->
+<!--    <TargetFramework>net5.0</TargetFramework>-->
+<!--    <AssemblyTitle>TLSharp.Core</AssemblyTitle>-->
+<!--    <Product>TLSharp.Core</Product>-->
+<!--    <Description>Unofficial Telegram (http://telegram.org) client library implemented in C#. Latest TL scheme supported.-->
 
-Consider donation to speed up development process.
+<!--Consider donation to speed up development process.-->
 
-Bitcoin wallet: 3K1ocweFgaHnAibJ3n6hX7RNZWFTFcJjUe
+<!--Bitcoin wallet: 3K1ocweFgaHnAibJ3n6hX7RNZWFTFcJjUe-->
 
-It's a perfect fit for any developer who would like to send data directly to Telegram users or write own custom Telegram client.</Description>
-    <Copyright>Copyright 2016</Copyright>
-    <Version>0.1</Version>
-    <OutputPath>bin\$(Configuration)\</OutputPath>
-    <Authors>Ilya P</Authors>
-    <PackageIconUrl>https://core.telegram.org/favicon.ico</PackageIconUrl>
-    <PackageId>TLSharp</PackageId>
-    <PackageProjectUrl>http://sochix.github.io/TLSharp/</PackageProjectUrl>
-    <PackageTags>telegram client, telegram API</PackageTags>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <DebugType>full</DebugType>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>pdbonly</DebugType>
-  </PropertyGroup>
-  <ItemGroup>
-  </ItemGroup>
+<!--It's a perfect fit for any developer who would like to send data directly to Telegram users or write own custom Telegram client.</Description>-->
+<!--    <Copyright>Copyright 2016</Copyright>-->
+<!--    <Version>0.1</Version>-->
+<!--    <OutputPath>bin\$(Configuration)\</OutputPath>-->
+<!--    <Authors>Ilya P</Authors>-->
+<!--    <PackageIconUrl>https://core.telegram.org/favicon.ico</PackageIconUrl>-->
+<!--    <PackageId>TLSharp</PackageId>-->
+<!--    <PackageProjectUrl>http://sochix.github.io/TLSharp/</PackageProjectUrl>-->
+<!--    <PackageTags>telegram client, telegram API</PackageTags>-->
+<!--  </PropertyGroup>-->
+<!--  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">-->
+<!--    <DebugType>full</DebugType>-->
+<!--  </PropertyGroup>-->
+<!--  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">-->
+<!--    <DebugType>pdbonly</DebugType>-->
+<!--  </PropertyGroup>-->
+<!--  <ItemGroup>-->
+<!--  </ItemGroup>-->
+    <PropertyGroup>
+        <TargetFramework>net5.0</TargetFramework>
+    </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\TeleSharp.TL\TeleSharp.TL.csproj" />
   </ItemGroup>
