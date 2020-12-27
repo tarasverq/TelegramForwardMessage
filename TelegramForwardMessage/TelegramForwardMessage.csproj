@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\TeleSharp.Generator\TeleSharp.Generator.csproj" />
+      <ProjectReference Include="..\TeleSharp.TL\TeleSharp.TL.csproj" />
+      <ProjectReference Include="..\TLSharp.Core\TLSharp.Core.csproj" />
+    </ItemGroup>
+
+</Project>
