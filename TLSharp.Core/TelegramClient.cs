@@ -102,6 +102,13 @@ namespace TLSharp.Core
             dcOptions = ((TLConfig)invokewithLayer.Response).DcOptions.ToList();
         }
 
+        public Task SendConfirmations(CancellationToken cancellationToken = default)
+        {
+            if (sender == null)
+                throw new InvalidOperationException("Not connected!");
+            return sender.SendConfirmations(true, cancellationToken);
+        }
+        
         private async Task ReconnectToDcAsync(int dcId, CancellationToken token = default(CancellationToken))
         {
             token.ThrowIfCancellationRequested();
@@ -179,6 +186,8 @@ namespace TLSharp.Core
                     request.ConfirmReceived = false;
                 }
             }
+
+            await SendConfirmations(token);
         }
 
         public bool IsUserAuthorized()

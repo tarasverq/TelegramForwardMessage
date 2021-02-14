@@ -15,20 +15,21 @@ namespace TLSharp.Core.Network
         private readonly TcpClient tcpClient;
         private readonly NetworkStream stream;
         private int sendCounter = 0;
+        private IPEndPoint _endpoint;
 
         public TcpTransport(string address, int port, TcpClientConnectionHandler handler = null)
         {
             if (handler == null)
             {
                 var ipAddress = IPAddress.Parse(address);
-                var endpoint = new IPEndPoint(ipAddress, port);
+                _endpoint = new IPEndPoint(ipAddress, port);
 
                 tcpClient = new TcpClient(ipAddress.AddressFamily);
 
                 try {
-                    tcpClient.Connect (endpoint);
+                    tcpClient.Connect (_endpoint);
                 } catch (Exception ex) {
-                    throw new Exception ($"Problem when trying to connect to {endpoint}; either there's no internet connection or the IP address version is not compatible (if the latter, consider using DataCenterIPVersion enum)",
+                    throw new Exception ($"Problem when trying to connect to {_endpoint}; either there's no internet connection or the IP address version is not compatible (if the latter, consider using DataCenterIPVersion enum)",
                                          ex);
                 }
             }
@@ -44,7 +45,19 @@ namespace TLSharp.Core.Network
         public async Task Send(byte[] packet, CancellationToken token = default(CancellationToken))
         {
             if (!tcpClient.Connected)
-                throw new InvalidOperationException("Client not connected to server.");
+            {
+                try
+                {
+                    tcpClient.Connect(_endpoint);
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception(
+                        $"Problem when trying to connect to {_endpoint}; either there's no internet connection or the IP address version is not compatible (if the latter, consider using DataCenterIPVersion enum)",
+                        ex);
+                }
+
+            }
 
             var tcpMessage = new TcpMessage(sendCounter, packet);
 

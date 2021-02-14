@@ -11,6 +11,12 @@ namespace TLSharp.Core.Network.Exceptions
                    " If you think the culprit of this problem may lie in TLSharp's implementation, open a Github issue please.")
         {
             TimeToWait = timeToWait;
+        } 
+        
+        public FloodException(TimeSpan timeToWait, string message, Exception inner = null)
+            : base(message, inner)
+        {
+            TimeToWait = timeToWait;
         }
     }
 }

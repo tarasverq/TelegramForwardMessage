@@ -48,6 +48,21 @@ namespace TLSharp.Core.Network
             token.ThrowIfCancellationRequested();
 
             // TODO: refactor
+            await SendConfirmations(false, token);
+
+
+            using (var memory = new MemoryStream())
+            using (var writer = new BinaryWriter(memory))
+            {
+                request.SerializeBody(writer);
+                await Send(memory.ToArray(), request, token).ConfigureAwait(false);
+            }
+
+            session.Save();
+        }
+
+        public async Task SendConfirmations(bool manual = false, CancellationToken token= default(CancellationToken))
+        {
             if (needConfirmation.Any())
             {
                 var ackRequest = new AckRequest(needConfirmation);
@@ -59,16 +74,6 @@ namespace TLSharp.Core.Network
                     needConfirmation.Clear();
                 }
             }
-
-
-            using (var memory = new MemoryStream())
-            using (var writer = new BinaryWriter(memory))
-            {
-                request.SerializeBody(writer);
-                await Send(memory.ToArray(), request, token).ConfigureAwait(false);
-            }
-
-            session.Save();
         }
 
         public async Task Send(byte[] packet, TeleSharp.TL.TLMethod request, CancellationToken token = default(CancellationToken))
@@ -229,7 +234,7 @@ namespace TLSharp.Core.Network
                 case 0x74ae4240:
                     return HandleUpdate(messageId, sequence, messageReader);
                 default:
-                    //logger.debug("unknown message: {0}", code);
+                    Debug.WriteLine("unknown message: {0}", code);
                     return false;
             }
         }
@@ -450,7 +455,7 @@ namespace TLSharp.Core.Network
             session.Salt = newSalt;
 
             //resend
-            Send(request, token);
+            Send(request, token).Wait();
             /*
             if(!runningRequests.ContainsKey(badMsgId)) {
                 logger.debug("bad server salt on unknown message");
@@ -472,6 +477,8 @@ namespace TLSharp.Core.Network
 
         private bool HandleNewSessionCreated(ulong messageId, int sequence, BinaryReader messageReader)
         {
+           // AckRequest request = new AckRequest(new List<ulong>() {messageId});
+           // Send(request).Wait();
             return false;
         }
 

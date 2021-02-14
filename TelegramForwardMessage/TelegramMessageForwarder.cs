@@ -3,14 +3,16 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using TelegramForwardMessage.Exceptions;
 using TeleSharp.TL;
+using TeleSharp.TL.Account;
 using TeleSharp.TL.Channels;
 using TeleSharp.TL.Contacts;
 using TeleSharp.TL.Messages;
 using TLSharp.Core;
+using TLSharp.Core.Network.Exceptions;
 using TLSharp.Core.Utils;
 using TLChatFull = TeleSharp.TL.TLChatFull;
 
@@ -33,7 +35,7 @@ namespace TelegramForwardMessage
         private string _hash;
 
         public TelegramMessageForwarder(int clientId, string clientHash, string phone, Tuple<int, int> delay)
-        {
+        { 
             _phone = phone;
             _delay = delay;
 
@@ -83,6 +85,10 @@ namespace TelegramForwardMessage
         /// <returns></returns>
         private async Task<TLMessage> GetLastMessage(TLChannel channelFrom)
         {
+            string type = typeof(TLRequestGetHistory).ToString();
+            if (!_methodCounter.TryAdd(type, 1))
+                _methodCounter[type]++;
+            
             TLAbsMessages resp = await _client.GetHistoryAsync(new TLInputPeerChannel()
             {
                 ChannelId = channelFrom.Id,
@@ -105,35 +111,65 @@ namespace TelegramForwardMessage
 
         public async Task ReplyInDiscussion(string channelUsername, string message)
         {
-            Tuple<TLChannel, TLChannelFull> channelInfo = await GetFullChannel(channelUsername);
+            Tuple<TLChannel, TLChannelFull, TLChannel> channelInfo = await GetFullChannel(channelUsername);
             TLChannel channel = channelInfo.Item1;
+            TLChannel chat = channelInfo.Item3;
             TLChannelFull fullInfo = channelInfo.Item2;
-            if (fullInfo?.LinkedChatId == null)
+            if (chat == null)
             {
                 throw new NoLinkedChatException();
             }
             else
             {
-                await ReplyInDiscussion(channel, message);
+                await ReplyInDiscussion(channel, message, chat);
             }
         }
 
-        private async Task ReplyInDiscussion(TLChannel channel, string message)
+        private async Task ReplyInDiscussion(TLChannel channel, string message, TLChannel chat)
         {
             TLMessage lastMessage = await GetLastMessage(channel);
+            await JoinChannel(channel);
 
-            DiscussionInfo discussionInfo = await GetDiscussionInfo(channel, lastMessage);
-            if (discussionInfo == null)
-                throw new NoDiscussionsException();
-
-            TLChannel targetChannel = new TLChannel()
+            TLChannel targetChannel = null;
+            int targetPostId = 0;
+            try
             {
-                Id = discussionInfo.Id,
-                AccessHash = discussionInfo.AccessHash
-            };
+                DiscussionInfo discussionInfo = await GetDiscussionInfo(channel, lastMessage);
+                targetChannel = new TLChannel()
+                {
+                    Id = discussionInfo.Id,
+                    AccessHash = discussionInfo.AccessHash
+                };
+                targetPostId = discussionInfo.PostId;
+            }
+            catch (NoDiscussionsException e)
+            {
+                Tuple<TLChannel, TLChannelFull, TLChannel> chatInfo = await GetFullChannel(new TLInputChannel() {ChannelId = chat.Id, AccessHash = chat.AccessHash ?? 0});
+                targetChannel = new TLChannel()
+                {
+                    Id = chatInfo.Item1.Id,
+                    AccessHash = chatInfo.Item1.AccessHash
+                };
+                targetPostId = chatInfo.Item2.PinnedMsgId ?? 0;
+            }
+
             await JoinChannel(targetChannel);
 
-            await ReplyTo(targetChannel, message, discussionInfo.PostId);
+            try
+            {
+                await ReplyTo(targetChannel, message, targetPostId);
+            }
+            catch (InvalidOperationException e)
+                when (e.Message == "MSG_ID_INVALID")
+            {
+                RandomHelper.SuperMario();
+                throw;
+            }
+            // catch (InvalidOperationException e)
+            //     when (e.Message == "CHAT_WRITE_FORBIDDEN")
+            // {
+            //     throw new NoLinkedChatException(e.Message);
+            // }
         }
 
         private async Task<DiscussionInfo> GetDiscussionInfo(TLChannel channel, TLMessage lastMessage)
@@ -147,13 +183,33 @@ namespace TelegramForwardMessage
                     AccessHash = channel.AccessHash ?? 0,
                 },
             };
-            TLDiscussionMessage discussionMessageResponse =
-                await SendRequestAsync<TLDiscussionMessage>(discussionMessageRequest);
+            TLDiscussionMessage discussionMessageResponse;
+            try
+            {
+                discussionMessageResponse = await SendRequestAsync<TLDiscussionMessage>(discussionMessageRequest);
+            }
+            catch (InvalidOperationException e) when (e.Message == "MSG_ID_INVALID")
+            {
+                throw new NoDiscussionsException(e.Message, e)
+                {
+                    Username = channel.Username,
+                    ChatId = channel.Id,
+                    MessageId = lastMessage.Id,
+                    MessageText = lastMessage.Message ?? String.Empty,
+                };
+            }
+
             TLMessage discussionMessage = discussionMessageResponse.Messages.Where(x => x is TLMessage)
                 .Cast<TLMessage>().FirstOrDefault();
             if (discussionMessage == null)
             {
-                return null;
+                throw new NoDiscussionsException()
+                {
+                    Username = channel.Username,
+                    ChatId = channel.Id,
+                    MessageId = lastMessage.Id,
+                    MessageText = lastMessage.Message ?? String.Empty,
+                };
             }
             
             int discussionChatId = ((TLPeerChannel) discussionMessage.PeerId).ChannelId;
@@ -164,7 +220,13 @@ namespace TelegramForwardMessage
                     .Cast<TLChannel>()
                     .FirstOrDefault();
             if (discussionsChannel == null)
-                return null;
+                throw new NoDiscussionsException()
+                {
+                    Username = channel.Username,
+                    ChatId = channel.Id,
+                    MessageId = lastMessage.Id,
+                    MessageText = lastMessage.Message ?? String.Empty,
+                };
             
             return new DiscussionInfo()
             {
@@ -184,39 +246,130 @@ namespace TelegramForwardMessage
         {
             if (!_authorized)
                 throw new UnauthorizedAccessException("Not authorized");
+
+            if (username.StartsWith("AAAAA"))
+            {
+               return await GetPrivateChannel(username);
+            }
+            
             TLRequestResolveUsername requestResolveUsername = new TLRequestResolveUsername()
             {
                 Username = username
             };
 
-            TLResolvedPeer peer = await SendRequestAsync<TLResolvedPeer>(requestResolveUsername);
+            TLResolvedPeer peer;
+            try
+            {
+                peer = await SendRequestAsync<TLResolvedPeer>(requestResolveUsername);
+            }
+            catch (InvalidOperationException invalidOperationException)
+                when(invalidOperationException.Message == "USERNAME_NOT_OCCUPIED"
+                     || invalidOperationException.Message == "USERNAME_INVALID")
+            {
+                throw new ChannelNotFoundException(invalidOperationException.Message, invalidOperationException) {ChannelName = username};
+            }
+               
 
-            TLChannel channel = (TLChannel) peer.Chats.First();
+            TLChannel channel = peer.Chats.FirstOrDefault(x=> x is TLChannel channelFilter && channelFilter.Username == username) as TLChannel;
+            if (channel == null)
+                throw new ChannelNotFoundException() {ChannelName = username};
+            
             return channel;
         }
-        
-        public async Task<Tuple<TLChannel, TLChannelFull>> GetFullChannel(string username)
+
+        private async Task<TLChannel> GetPrivateChannel(string hash)
+        {
+            TLRequestCheckChatInvite requestCheckChatInvite = new TLRequestCheckChatInvite()
+            {
+                Hash = hash
+            };
+            TLAbsChatInvite inviteInfo;
+            try
+            {
+                inviteInfo = await SendRequestAsync<TLAbsChatInvite>(requestCheckChatInvite);
+            }
+            catch (InvalidOperationException invalidOperationException)
+                when (invalidOperationException.Message == "INVITE_HASH_EXPIRED"
+                      || invalidOperationException.Message == "INVITE_HASH_INVALID")
+            {
+                throw new ChannelNotFoundException(invalidOperationException.Message, invalidOperationException)
+                    {ChannelName = hash};
+            }
+
+            if (inviteInfo is TLChatInvitePeek peek)
+            {
+                TLChannel channel = peek.Chat as TLChannel;
+                if (channel == null)
+                    throw new ChannelNotFoundException() {ChannelName = hash};
+                return channel;
+            }
+            else if (inviteInfo is TLChatInviteAlready already)
+            {
+                TLChannel channel = already.Chat as TLChannel;
+                if (channel == null)
+                    throw new ChannelNotFoundException() {ChannelName = hash};
+                return channel;
+            }
+            else if (inviteInfo is TLChatInvite invite)
+            {
+                TLRequestImportChatInvite importChatInvite = new TLRequestImportChatInvite()
+                {
+                    Hash = hash,
+                };
+                var resp = await SendRequestAsync<TLUpdates>(importChatInvite);
+
+                var channel =
+                    resp.Chats.First(x => x is TLChannel channelFilter/* && channelFilter.Title == invite.Title*/) as TLChannel;
+                return channel;
+                //TODO FIX
+            }
+            else
+            {
+                throw new NotImplementedException($"Unknown type of TLAbsChatInvite. hash '{hash}'");
+            }
+        }
+
+        public async Task<Tuple<TLChannel, TLChannelFull, TLChannel>> GetFullChannel(string username)
         {
             if (!_authorized)
                 throw new UnauthorizedAccessException("Not authorized");
 
             TLChannel channel = await GetChannel(username);
+            return await GetFullChannel(new TLInputChannel()
+            {
+                ChannelId = channel.Id,
+                AccessHash = channel.AccessHash ?? 0
+            });
 
+        }
+
+        private async Task<Tuple<TLChannel, TLChannelFull, TLChannel>> GetFullChannel(TLInputChannel inputChannel)
+        {
             TLRequestGetFullChannel requestGetFullChannel = new TLRequestGetFullChannel()
             {
-                Channel = new TLInputChannel()
-                {
-                    ChannelId = channel.Id,
-                    AccessHash = channel.AccessHash ?? 0
-                }
+                Channel = inputChannel
             };
 
             TeleSharp.TL.Messages.TLChatFull chatFull = await SendRequestAsync<TeleSharp.TL.Messages.TLChatFull>(requestGetFullChannel);
-            return new Tuple<TLChannel, TLChannelFull>(channel, chatFull.FullChat as TLChannelFull);
+
+            
+            TLChannelFull channelFull = chatFull.FullChat as TLChannelFull;
+            TLChannel channel =  chatFull.Chats.First(x =>
+                x is TLChannel channelFilter && channelFilter.Id == channelFull?.Id) as TLChannel;
+            TLChannel chat = chatFull.Chats.FirstOrDefault(x =>
+                x is TLChannel channelFilter && channelFilter.Id == channelFull?.LinkedChatId) as TLChannel;
+            
+            return new Tuple<TLChannel, TLChannelFull, TLChannel>(channel, channelFull, chat);
         }
-        
-        
-        
+
+        public async Task SetOnline()
+        {
+            TLRequestUpdateStatus requestUpdateStatus = new TLRequestUpdateStatus()
+            {
+                Offline = false,
+            };
+            bool ok = await SendRequestAsync<bool>(requestUpdateStatus);
+        }
 
         public Task ReplyTo(TLChannel channelTo, string message, int? replyMsgId = null)
         {
@@ -254,11 +407,33 @@ namespace TelegramForwardMessage
             };
             await SendRequestAsync<TLUpdates>(req);
         }
-        
-        public async Task<T> SendRequestAsync<T>(TLMethod methodToExecute, CancellationToken token = default(CancellationToken))
+
+        public async Task<T> SendRequestAsync<T>(TLMethod methodToExecute,
+            CancellationToken token = default(CancellationToken))
         {
-            await Task.Delay(RandomHelper.GetRandomDelay(_delay.Item1, _delay.Item2));
-            return await _client.SendRequestAsync<T>(methodToExecute, token);
+            string type = methodToExecute.GetType().ToString();
+            if (!_methodCounter.TryAdd(type, 1))
+                _methodCounter[type]++;
+            try
+            {
+                await Task.Delay(RandomHelper.GetRandomDelay(_delay.Item1, _delay.Item2));
+                return await _client.SendRequestAsync<T>(methodToExecute, token);
+            }
+            catch (FloodException e)
+            {
+                throw new FloodException(e.TimeToWait, 
+                    System.Text.Json.JsonSerializer.Serialize(_methodCounter, options: 
+                    new System.Text.Json.JsonSerializerOptions(){WriteIndented = true}), e);
+            }
+           
+        }
+
+        private Dictionary<string, int> _methodCounter = new Dictionary<string, int>();
+        public IReadOnlyDictionary<string, int> MethodCounter => _methodCounter;
+
+        public void ClearMethodCounter()
+        {
+            _methodCounter = new();
         }
     }
 
@@ -267,64 +442,6 @@ namespace TelegramForwardMessage
         public int Id { get; set; }
         public long? AccessHash { get; set; }
         public int PostId { get; set; }
-    }
-
-    [Serializable]
-    public class NoLinkedChatException : Exception
-    {
-        //
-        // For guidelines regarding the creation of new exception types, see
-        //    http://msdn.microsoft.com/library/default.asp?url=/library/en-us/cpgenref/html/cpconerrorraisinghandlingguidelines.asp
-        // and
-        //    http://msdn.microsoft.com/library/default.asp?url=/library/en-us/dncscol/html/csharp07192001.asp
-        //
-
-        public NoLinkedChatException()
-        {
-        }
-
-        public NoLinkedChatException(string message) : base(message)
-        {
-        }
-
-        public NoLinkedChatException(string message, Exception inner) : base(message, inner)
-        {
-        }
-
-        protected NoLinkedChatException(
-            SerializationInfo info,
-            StreamingContext context) : base(info, context)
-        {
-        }
-    }
-    
-    [Serializable]
-    public class NoDiscussionsException : Exception
-    {
-        //
-        // For guidelines regarding the creation of new exception types, see
-        //    http://msdn.microsoft.com/library/default.asp?url=/library/en-us/cpgenref/html/cpconerrorraisinghandlingguidelines.asp
-        // and
-        //    http://msdn.microsoft.com/library/default.asp?url=/library/en-us/dncscol/html/csharp07192001.asp
-        //
-
-        public NoDiscussionsException()
-        {
-        }
-
-        public NoDiscussionsException(string message) : base(message)
-        {
-        }
-
-        public NoDiscussionsException(string message, Exception inner) : base(message, inner)
-        {
-        }
-
-        protected NoDiscussionsException(
-            SerializationInfo info,
-            StreamingContext context) : base(info, context)
-        {
-        }
     }
 
     class Trash
