@@ -6,6 +6,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\ProxyLib-master\ProxyLib.csproj" />
       <ProjectReference Include="..\TelegramForwardMessage\TelegramForwardMessage.csproj" />
     </ItemGroup>
 

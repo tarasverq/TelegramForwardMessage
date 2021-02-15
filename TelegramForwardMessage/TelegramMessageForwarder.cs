@@ -12,6 +12,7 @@ using TeleSharp.TL.Channels;
 using TeleSharp.TL.Contacts;
 using TeleSharp.TL.Messages;
 using TLSharp.Core;
+using TLSharp.Core.Network;
 using TLSharp.Core.Network.Exceptions;
 using TLSharp.Core.Utils;
 using TLChatFull = TeleSharp.TL.TLChatFull;
@@ -34,12 +35,12 @@ namespace TelegramForwardMessage
 
         private string _hash;
 
-        public TelegramMessageForwarder(int clientId, string clientHash, string phone, Tuple<int, int> delay)
+        public TelegramMessageForwarder(int clientId, string clientHash, string phone, Tuple<int, int> delay, TcpClientConnectionHandler handler = null)
         { 
             _phone = phone;
             _delay = delay;
 
-            _client = new TelegramClient(clientId, clientHash, null, phone);
+            _client = new TelegramClient(clientId, clientHash, null, phone, handler);
 
         }
 
