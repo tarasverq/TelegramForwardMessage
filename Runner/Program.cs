@@ -3,6 +3,7 @@ using System.Collections;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using ProxyLib;
@@ -71,7 +72,7 @@ namespace Runner
 
 
                     _log.Information($"{channel}: {message}.");
-                    
+
                     if (!success.Contains(channel))
                         File.AppendAllText("Success.txt", channel + Environment.NewLine);
                 }
@@ -104,6 +105,11 @@ namespace Runner
                           "CHAT_WRITE_FORBIDDEN")
                 {
                     continue;
+                }
+                catch (WebException e)
+                {
+                    _log.Fatal(e.Demystify(), $"{channel}");
+                    messageForwarder = await GetTelegramMessageForwarder(clientId, clientHash, phone, delay);
                 }
                 catch (Exception exception)
                 {

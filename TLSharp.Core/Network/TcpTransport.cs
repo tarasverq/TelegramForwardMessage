@@ -93,7 +93,7 @@ namespace TLSharp.Core.Network
 
             var crcBytes = new byte[4];
             if (await stream.ReadAsync(crcBytes, 0, 4, token).ConfigureAwait(false) != 4)
-                throw new InvalidOperationException("Couldn't read the crc");
+                throw new WebException("Couldn't read the crc");
 
             byte[] rv = new byte[packetLengthBytes.Length + seqBytes.Length + body.Length];
 
