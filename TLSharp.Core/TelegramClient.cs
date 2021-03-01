@@ -209,6 +209,24 @@ namespace TLSharp.Core
             return request.Response.PhoneCodeHash;
         }
 
+        public async Task<bool> AuthorizeBot(string botToken, CancellationToken token = default(CancellationToken))
+        {
+            if (String.IsNullOrWhiteSpace(botToken))
+                throw new ArgumentNullException(nameof(botToken));
+
+            TLRequestImportBotAuthorization botReq = new TLRequestImportBotAuthorization()
+            {
+                BotAuthToken = botToken,
+                ApiId = apiId,
+                ApiHash = apiHash,
+            };
+
+            var auth = await SendRequestAsync<TLAuthorization>(botReq);
+            TLUser user = (TLUser) auth.User;
+            OnUserAuthenticated(user);
+            return true;
+        }
+
         public async Task<TLUser> MakeAuthAsync(string phoneNumber, string phoneCodeHash, string code, CancellationToken token = default(CancellationToken))
         {
             if (String.IsNullOrWhiteSpace(phoneNumber))

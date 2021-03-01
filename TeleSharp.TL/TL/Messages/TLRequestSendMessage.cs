@@ -41,6 +41,7 @@ namespace TeleSharp.TL.Messages
 			Flags = ReplyToMsgId != null ? (Flags | 1) : (Flags & ~1);
 			Flags = ReplyMarkup != null ? (Flags | 4) : (Flags & ~4);
 			Flags = Entities != null ? (Flags | 8) : (Flags & ~8);
+			Flags = ScheduleDate != null ? (Flags | 1024) : (Flags & ~1024);
 		}
 
 		public override void DeserializeBody(BinaryReader br)
