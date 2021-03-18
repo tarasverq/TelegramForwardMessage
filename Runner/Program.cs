@@ -1,5 +1,5 @@
 ﻿using System;
-using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -21,7 +21,7 @@ namespace Runner
     {
         static Logger _log;
         static ProxyClientFactory _proxyClientFactory = new ProxyClientFactory();
-
+        static  Tuple<int, int> delay = new Tuple<int, int>(0, 0);
         static async Task Main(string[] args)
         {
             _log = new LoggerConfiguration()
@@ -31,47 +31,49 @@ namespace Runner
                 .CreateLogger();
             _log.Information($"Program start.");
 
+           
+            CircularList<Account> accounts = new CircularList<Account>(
+                File.ReadAllLines("accounts.txt")
+                    .Where(x=> !x.StartsWith("#"))
+                    .Select(x=> new Account(x)).ToList());
 
-            //Клиент и секрет от него из телеграма
-            // int clientId = 2496; string clientHash = "8da85b0d5bfe62527e5b244c209159c3"; //TG WEB
-            //int clientId = 2428391; string clientHash = "fd7753c449cdd516e882a8b744277da1"; //MY
-            int clientId = 3346028;
-            string clientHash = "2daaeff02199ddca5481ce4ab3874298"; //Creamy
-            //Телефон без +, иначе не будет работать кеш сессий
-            string phone = "79058463205";
-
-            var channels = File.ReadAllLines("channels_adult.txt").Distinct().ToList();
+            var channels = File.ReadAllLines("channels_adult.txt")
+                .Where(x=> !x.StartsWith("_"))
+                .Distinct().ToList();
             var success = File.ReadAllLines("success.txt").Distinct().ToList();
             var noLinkedChannel = File.ReadAllLines("no_linked_chat.txt").Distinct().Except(success).ToList();
             var notFound = File.ReadAllLines("not_found.txt").Distinct().Except(success).ToList();
             channels = channels
                 .Except(noLinkedChannel)
                 .Except(notFound)
-                //.Except(success)
-
-                .OrderBy(x => Guid.NewGuid())
-
+                //.OrderBy(x => Guid.NewGuid())
+                .Shuffle()
                 .ToList();
             string[] replies = File.ReadAllLines("replies.txt");
-            var delay = new Tuple<int, int>(1, 1);
-            //var delay = new Tuple<int, int>(40, 200);
+            
+            Dictionary<Account, TelegramMessageForwarder> forwarders = new ();
 
-            TelegramMessageForwarder messageForwarder =
-                await GetTelegramMessageForwarder(clientId, clientHash, phone, delay);
-
-            await messageForwarder.SetOnline();
             for (int index = 0; index < channels.Count; index++)
             {
+                Account account = accounts.GetNext();
+                
+                if(!forwarders.TryGetValue(account, out TelegramMessageForwarder messageForwarder))
+                {
+                    messageForwarder = await GetTelegramMessageForwarder(account);
+                    forwarders.Add(account, messageForwarder);
+                }
+
                 string channel = channels[index];
                 _log.Information(string.Empty);
-                _log.Information($"{index + 1}/{channels.Count} - {channel}");
+                _log.Information($"{index + 1}/{channels.Count} - {channel}. Account: {account.Phone}");
                 try
                 {
                     string message = RandomHelper.GetRandom(replies);
-                    await messageForwarder.ReplyInDiscussion(channel, message);
+                    //await messageForwarder.ReplyInDiscussion(channel, message);
+                    await messageForwarder.ReplyInDiscussion("sex_educatiion", message);
 
 
-                    _log.Information($"{channel}: {message}.");
+                    _log.Information($"{account.Phone}: {channel}: {message}.");
 
                     if (!success.Contains(channel))
                         File.AppendAllText("Success.txt", channel + Environment.NewLine);
@@ -97,7 +99,8 @@ namespace Runner
                     _log.Fatal(e.Demystify(), $"{channel}");
                     _log.Fatal($"Delay for {e.TimeToWait}. End at {DateTime.Now.Add(e.TimeToWait)}");
                     await Task.Delay(e.TimeToWait);
-                    messageForwarder = await GetTelegramMessageForwarder(clientId, clientHash, phone, delay);
+                    messageForwarder = await GetTelegramMessageForwarder(account);
+                    forwarders[account] = messageForwarder;
                     index--;
                 }
                 catch (InvalidOperationException invalidOperationException)
@@ -109,7 +112,8 @@ namespace Runner
                 catch (WebException e)
                 {
                     _log.Fatal(e.Demystify(), $"{channel}");
-                    messageForwarder = await GetTelegramMessageForwarder(clientId, clientHash, phone, delay);
+                    messageForwarder = await GetTelegramMessageForwarder(account);
+                    forwarders[account] = messageForwarder;
                 }
                 catch (Exception exception)
                 {
@@ -117,7 +121,7 @@ namespace Runner
                     _log.Error(exception.Demystify(), $"{channel}");
                 }
 
-                int currentDelay = RandomHelper.GetRandomDelay(70, 120);
+                int currentDelay = RandomHelper.GetRandomDelay(80, 150);
                 _log.Information($"Sleep {currentDelay}");
                 await Task.Delay(currentDelay);
             }
@@ -126,23 +130,24 @@ namespace Runner
             Console.ReadLine();
         }
 
-        private static async Task<TelegramMessageForwarder> GetTelegramMessageForwarder(int clientId, string clientHash,
-            string phone, Tuple<int, int> delay)
+        private static Task<TelegramMessageForwarder> GetTelegramMessageForwarder
+            (Account account)
         {
-            IProxyClient proxyClient = _proxyClientFactory.CreateProxyClient(new ProxyDefinition()
-                {
-                    Type = ProxyType.Socks5,
-                    ProxyHost = "127.0.0.1",
-                    ProxyPort = 9150,
-                    ProxyUsername = "",
-                    ProxyPassword = ""
-                }
-            );
+            return GetTelegramMessageForwarder(account.ClientId, account.ClientHash, account.Phone,
+                account.ProxyDefinition);
+        }
 
-            TcpClientConnectionHandler handler = (address, port) =>
+        private static async Task<TelegramMessageForwarder> GetTelegramMessageForwarder
+            (int clientId, string clientHash, string phone, ProxyDefinition definition = null)
+        {
+            TcpClientConnectionHandler handler = null;
+
+            if (definition != null)
             {
-                return proxyClient.CreateConnection(address, port);
-            };
+                IProxyClient proxyClient = _proxyClientFactory.CreateProxyClient(definition);
+
+                handler = (address, port) => { return proxyClient.CreateConnection(address, port); };
+            }
 
             TelegramMessageForwarder messageForwarder =
                 new TelegramMessageForwarder(clientId, clientHash, phone, delay, handler);
@@ -153,6 +158,8 @@ namespace Runner
                 string code = "1";
                 await messageForwarder.SendCode(code);
             }
+            
+            messageForwarder.RunOnlineSending();
 
             return messageForwarder;
         }

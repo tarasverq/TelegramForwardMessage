@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
@@ -49,6 +51,41 @@ namespace TelegramForwardMessage.Tests
                 channels.AddRange(codes);
                 offset += 100;
             } while (offset <= 700);
+
+            File.WriteAllLines("channels_adult.txt", channels.
+                Distinct()
+                .Where(x=> x.StartsWith("@"))
+                .Select(x=> x.Remove(0,1)));
+
+
+        }
+        
+        [Test]
+        public async Task Telemetr()
+        {
+            List<string> channels = new List<string>();
+            var cookieContainer = new CookieContainer();
+            var handler = new HttpClientHandler() {CookieContainer = cookieContainer};
+            HttpClient client = new HttpClient(handler);
+            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:85.0) Gecko/20100101 Firefox/85.0");
+            client.DefaultRequestHeaders.Referrer =
+                new Uri(
+                    "https://telemetr.me/channels/cat/%D0%9F%D0%BE%D1%88%D0%BB%D0%BE%D0%B5/?title=%D0%BC%D0%BE%D0%BB%D0%BE%D0%B4%D1%8B%D0%B5");
+            cookieContainer.Add(new Uri("https://telemetr.me/"), new Cookie("reflink", "gnpdhjg"));
+            for (int i = 0; i < 5; i++)
+            {
+                string url = $"https://telemetr.me/channels/cat/Пошлое/?page={i}";
+                var result = await client.GetStringAsync(url);
+
+                MatchCollection matches = Regex.Matches(result, "data-link=\"https://t.me/(joinchat/)?(.+?)\"");
+                var codes = matches.Select(x => x.Groups[2].Value).ToList();
+                
+                channels.AddRange(codes);
+            }
+          
+               
+                
+          
 
             File.WriteAllLines("channels_adult.txt", channels.
                 Distinct()

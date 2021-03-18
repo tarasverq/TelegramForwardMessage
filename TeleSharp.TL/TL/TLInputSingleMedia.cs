@@ -50,7 +50,7 @@ Entities = null;
             bw.Write(Flags);
 ObjectUtils.SerializeObject(Media,bw);
 bw.Write(RandomId);
-StringUtil.Serialize(Message,bw);
+StringUtil.Serialize(Message ?? String.Empty, bw);
 if ((Flags & 1) != 0)
 ObjectUtils.SerializeObject(Entities,bw);
 

@@ -65,12 +65,13 @@ namespace TLSharp.Core
             this.dcIpVersion = dcIpVersion;
 
             session = Session.TryLoadOrCreateNew(store, sessionUserId);
-            transport = new TcpTransport (session.DataCenter.Address, session.DataCenter.Port, this.handler);
         }
 
         public async Task ConnectAsync(bool reconnect = false, CancellationToken token = default(CancellationToken))
         {
             token.ThrowIfCancellationRequested();
+            transport = new TcpTransport (session.DataCenter.Address, session.DataCenter.Port, this.handler);
+
 
             if (session.AuthKey == null || reconnect)
             {
@@ -195,6 +196,25 @@ namespace TLSharp.Core
             return session.TLUser != null;
         }
 
+        // public async Task<TLUser> MakeAuthWithPasswordAsync(TLPassword password, string password_str, CancellationToken token = default(CancellationToken))
+        // {
+        //     token.ThrowIfCancellationRequested();
+        //
+        //     byte[] password_Bytes = Encoding.UTF8.GetBytes(password_str);
+        //     IEnumerable<byte> rv = password.CurrentSalt.Concat(password_Bytes).Concat(password.CurrentSalt);
+        //
+        //     SHA256Managed hashstring = new SHA256Managed();
+        //     var password_hash = hashstring.ComputeHash(rv.ToArray());
+        //
+        //     var request = new TLRequestCheckPassword() { PasswordHash = password_hash };
+        //
+        //     await RequestWithDcMigration(request, token).ConfigureAwait(false);
+        //
+        //     OnUserAuthenticated((TLUser)request.Response.User);
+        //
+        //     return (TLUser)request.Response.User;
+        // }
+
       
 
         public async Task<string> SendCodeRequestAsync(string phoneNumber, CancellationToken token = default(CancellationToken))
@@ -207,6 +227,28 @@ namespace TLSharp.Core
             await RequestWithDcMigration(request, token).ConfigureAwait(false);
 
             return request.Response.PhoneCodeHash;
+        } 
+        
+        public async Task<byte[]> GetQRCodeLoginAsync(CancellationToken token = default(CancellationToken))
+        {
+            TLRequestExportLoginToken requestExportLoginToken = new TLRequestExportLoginToken()
+            {
+                ApiId = apiId, ApiHash = apiHash, ExceptIds = new TLVector<int>()
+            };
+            var resp = await SendRequestAsync<TLAbsLoginToken>(requestExportLoginToken);
+            var tlLogin = resp as TLLoginToken;
+            var tlLoginMigrate = resp as TLLoginTokenMigrateTo;
+            if (tlLoginMigrate != null)
+            {
+                await ReconnectToDcAsync(tlLoginMigrate.DcId, token);
+                TLRequestImportLoginToken importLoginToken = new TLRequestImportLoginToken()
+                {
+                    Token = tlLoginMigrate.Token
+                };
+                var importLoginTokenResponse =  await SendRequestAsync<TLAbsLoginToken>(importLoginToken);
+            }
+            
+            return tlLogin.Token;
         }
 
         public async Task<bool> AuthorizeBot(string botToken, CancellationToken token = default(CancellationToken))

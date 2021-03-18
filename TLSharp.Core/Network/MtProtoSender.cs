@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using TeleSharp.TL;
+using TeleSharp.TL.Auth;
 using TLSharp.Core.Exceptions;
 using TLSharp.Core.MTProto;
 using TLSharp.Core.MTProto.Crypto;
@@ -60,6 +61,8 @@ namespace TLSharp.Core.Network
 
             session.Save();
         }
+        
+        
 
         public async Task SendConfirmations(bool manual = false, CancellationToken token= default(CancellationToken))
         {
@@ -191,6 +194,7 @@ namespace TLSharp.Core.Network
 
             uint code = messageReader.ReadUInt32();
             messageReader.BaseStream.Position -= 4;
+            Debug.WriteLine($"Code = {code:X}");
             switch (code)
             {
                 case 0x73f1f8dc: // container
@@ -241,6 +245,15 @@ namespace TLSharp.Core.Network
 
         private bool HandleUpdate(ulong messageId, int sequence, BinaryReader messageReader)
         {
+            //messageReader.BaseStream.Position -= 4;
+            var o = ObjectUtils.DeserializeObject(messageReader);
+            if (o is TLUpdateShort updateShort)
+            {
+                if (updateShort.Update is TLUpdateLoginToken loginToken)
+                {
+                    throw new UnauthorizedAccessException();
+                }
+            }
             return false;
 
             /*
@@ -377,6 +390,11 @@ namespace TLSharp.Core.Network
             {
                 messageReader.BaseStream.Position -= 4;
                 request.DeserializeResponse(messageReader);
+                // if (request is TLRequestExportLoginToken loginToken &&
+                //     loginToken.Response is TLLoginTokenMigrateTo migrateTo)
+                // {
+                //     throw new NetworkMigrationException(migrateTo.DcId);
+                // }
             }
 
             return false;
